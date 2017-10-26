@@ -22,6 +22,9 @@ import (
 
 	"github.com/codedellemc/gocsi"
 	"github.com/codedellemc/gocsi/csi"
+
+	"github.com/aglitke/csi-cinder/pkg/volumeservice"
+	"github.com/gophercloud/gophercloud"
 )
 
 // Define some loggers.
@@ -56,7 +59,13 @@ func main() {
 
 	ctx := context.Background()
 
-	s := &sp{name: "mock"}
+	s := &sp{name: "csi-cinder"}
+
+	vs, err := volumeservice.GetVolumeService("")
+	if err != nil {
+		lerre.Fatalf("failed to connect to cinder: %v\n", err)
+	}
+	s.vs = vs
 
 	trapSignals(func() {
 		s.GracefulStop(ctx)
@@ -125,6 +134,7 @@ type sp struct {
 	name   string
 	server *grpc.Server
 	closed bool
+	vs *gophercloud.ServiceClient
 }
 
 func newGrpcServer() *grpc.Server {
