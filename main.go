@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -25,6 +26,7 @@ import (
 
 	"github.com/aglitke/csi-cinder/pkg/volumeservice"
 	"github.com/gophercloud/gophercloud"
+	"github.com/gophercloud/gophercloud/openstack/blockstorage/v2/volumes"
 )
 
 // Define some loggers.
@@ -39,6 +41,17 @@ var (
 ////////////////////////////////////////////////////////////////////////////////
 
 func main() {
+	flag.Parse()
+	flag.Set("logtostderr", "true")
+
+	s := &sp{name: "csi-cinder"}
+
+	vs, err := volumeservice.GetVolumeService("")
+	if err != nil {
+		lerre.Fatalf("failed to connect to cinder: %v\n", err)
+	}
+	s.vs = vs
+
 	l, err := gocsi.GetCSIEndpointListener()
 	if err != nil {
 		lerre.Fatalf("failed to listen: %v\n", err)
@@ -58,14 +71,6 @@ func main() {
 	}
 
 	ctx := context.Background()
-
-	s := &sp{name: "csi-cinder"}
-
-	vs, err := volumeservice.GetVolumeService("")
-	if err != nil {
-		lerre.Fatalf("failed to connect to cinder: %v\n", err)
-	}
-	s.vs = vs
 
 	trapSignals(func() {
 		s.GracefulStop(ctx)
@@ -221,27 +226,40 @@ func (s *sp) CreateVolume(
 	// does not already exist then create it, otherwise
 	// just return the existing volume
 	name := req.Name
-	_, v := findVolByName(name)
+	v, err := volumeservice.GetCinderVolumeByName(s.vs, name)
+	if err != nil {
+		return gocsi.ErrCreateVolume(csi.Error_CreateVolumeError_UNKNOWN,
+			"CreateVolume failed"), nil
+	}
 	if v == nil {
-		capacity := gib100
-		if cr := req.CapacityRange; cr != nil {
-			if rb := cr.RequiredBytes; rb > 0 {
-				capacity = rb
-			}
-			if lb := cr.LimitBytes; lb > 0 {
-				capacity = lb
-			}
+		opts := volumes.CreateOpts{}
+		// NOTE(jdg): I know why we have a `range` but still find it awkward
+		// should bring this up again in CSI spec.
+
+		// FIXME: hardcoding a size for POC here
+		opts.Size = 1
+		opts.VolumeType = req.Parameters["vtype"]
+		opts.Description = "CSI Volume"
+		opts.Name = name
+		v, err = volumeservice.CreateCinderVolume(s.vs, opts)
+		if err != nil {
+			return gocsi.ErrCreateVolume(csi.Error_CreateVolumeError_UNKNOWN, err.Error()), err
 		}
-		v = newVolume(name, capacity)
-		vols = append(vols, v)
 	}
 
-	louti.Printf("Volume.ID=%s\n", v.Id.Values["id"])
-
+	id := &csi.VolumeID{
+		Values: map[string]string{
+			"Name": v.Name,
+			"ID": v.ID,
+		},
+	}
 	return &csi.CreateVolumeResponse{
 		Reply: &csi.CreateVolumeResponse_Result_{
 			Result: &csi.CreateVolumeResponse_Result{
-				VolumeInfo: v,
+				VolumeInfo: &csi.VolumeInfo{
+					CapacityBytes: uint64(v.Size << 30),  // GiB -> bytes
+					Id: id,
+				},
 			},
 		},
 	}, nil
@@ -261,16 +279,14 @@ func (s *sp) DeleteVolume(
 	s.Lock()
 	defer s.Unlock()
 
-	x, v := findVol("id", id)
-	if v != nil {
-		// this delete logic won't preserve order,
-		// but it will prevent any potential mem
-		// leaks due to orphaned references
-		vols[x] = vols[len(vols)-1]
-		vols[len(vols)-1] = nil
-		vols = vols[:len(vols)-1]
+	vol, err := volumes.Get(s.vs, id).Extract()
+	if err == nil && vol != nil {
+		err = volumeservice.DeleteCinderVolume(s.vs, id)
 	}
 
+	if err != nil {
+		return gocsi.ErrDeleteVolume(csi.Error_DeleteVolumeError_UNKNOWN, err.Error()), err
+	}
 	return &csi.DeleteVolumeResponse{
 		Reply: &csi.DeleteVolumeResponse_Result_{
 			Result: &csi.DeleteVolumeResponse_Result{},
@@ -816,6 +832,7 @@ func newVolume(name string, capcity uint64) *csi.VolumeInfo {
 	}
 	return vi
 }
+
 
 func findVolByID(id *csi.VolumeID) (int, *csi.VolumeInfo) {
 	if id == nil || len(id.Values) == 0 {

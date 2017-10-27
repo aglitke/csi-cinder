@@ -17,11 +17,8 @@ limitations under the License.
 package volumeservice
 
 import (
-	"crypto/tls"
-	"crypto/x509"
 	"errors"
 	"fmt"
-	"net/http"
 	"os"
 
 	"github.com/gophercloud/gophercloud"
@@ -132,15 +129,19 @@ func getConfig(configFilePath string) (cinderConfig, error) {
 func getKeystoneVolumeService(cfg cinderConfig) (*gophercloud.ServiceClient, error) {
 	provider, err := openstack.AuthenticatedClient(cfg.toAuthOptions())
 	if err != nil {
-		fmt.Printf("error creating new cinder service: %+v", err)
-		return service{}
+		fmt.Printf("error authenticating to keystone: %+v", err)
+		return nil, err
 	}
 
 	eopts := gophercloud.EndpointOpts{
 		Region: cfg.Global.Region,
 	}
 
-	volumeService, _ := openstack.NewBlockStorageV2(provider, eopts)
+	volumeService, err := openstack.NewBlockStorageV2(provider, eopts)
+	if err != nil {
+		fmt.Printf("error creating new cinder service: %+v", err)
+		return nil, err
+	}
 
 	return volumeService, nil
 }

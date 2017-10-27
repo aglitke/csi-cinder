@@ -17,15 +17,14 @@ limitations under the License.
 package volumeservice
 
 import (
-	"fmt"
-	"strings"
 	"time"
 
 	"github.com/golang/glog"
 	"github.com/gophercloud/gophercloud"
-	"github.com/gophercloud/gophercloud/openstack/blockstorage/extensions/volumeactions"
-	volumes_v2 "github.com/gophercloud/gophercloud/openstack/blockstorage/v2/volumes"
-	"k8s.io/apimachinery/pkg/util/uuid"
+	"github.com/gophercloud/gophercloud/openstack/blockstorage/v2/extensions/volumeactions"
+	"github.com/gophercloud/gophercloud/openstack/blockstorage/v2/volumes"
+	//"github.com/gophercloud/gophercloud/openstack/blockstorage/v1/volumes"
+	"github.com/gophercloud/gophercloud/pagination"
 )
 
 const initiatorName = "iqn.1994-05.com.redhat:a13fc3d1cc22"
@@ -63,41 +62,15 @@ type rcvVolumeConnection struct {
 }
 
 // CreateCinderVolume creates a new volume in cinder according to the PVC specifications
-func CreateCinderVolume(vs *gophercloud.ServiceClient, sizeBytes uint64, parameters map[string]string) (string, error) {
-	name := fmt.Sprintf("cinder-dynamic-pvc-%s", uuid.NewUUID())
-	// Cinder works with gigabytes, convert to GiB with rounding up
-	sizeGB := int((sizeBytes + 1024*1024*1024 - 1) / (1024 * 1024 * 1024))
-	volType := ""
-	availability := "nova"
-	// Apply ProvisionerParameters (case-insensitive). We leave validation of
-	// the values to the cloud provider.
-	for k, v := range parameters {
-		switch strings.ToLower(k) {
-		case "type":
-			volType = v
-		case "availability":
-			availability = v
-		default:
-			return "", fmt.Errorf("invalid option %q", k)
-		}
-	}
-
-	opts := volumes_v2.CreateOpts{
-		Name:             name,
-		Size:             sizeGB,
-		VolumeType:       volType,
-		AvailabilityZone: availability,
-	}
-
-	vol, err := volumes_v2.Create(vs, &opts).Extract()
-
+func CreateCinderVolume(vs *gophercloud.ServiceClient, opts volumes.CreateOpts) (*volumes.Volume, error) {
+	vol, err := volumes.Create(vs, &opts).Extract()
 	if err != nil {
-		glog.Errorf("Failed to create a %d GiB volume: %v", sizeGB, err)
-		return "", err
+		glog.Errorf("Failed to create a %d GiB volume: %v", opts.Size, err)
+		return nil, err
 	}
 
 	glog.V(2).Infof("Created volume %v in Availability Zone: %v", vol.ID, vol.AvailabilityZone)
-	return vol.ID, nil
+	return vol, nil
 }
 
 // WaitForAvailableCinderVolume waits for a newly created cinder volume to
@@ -165,10 +138,41 @@ func UnreserveCinderVolume(vs *gophercloud.ServiceClient, volumeID string) error
 // DeleteCinderVolume removes a volume from cinder which will cause it to be
 // deleted on the storage server.
 func DeleteCinderVolume(vs *gophercloud.ServiceClient, volumeID string) error {
-	err := volumes_v2.Delete(vs, volumeID).ExtractErr()
+	err := volumes.Delete(vs, volumeID).ExtractErr()
 	if err != nil {
 		glog.Errorf("Cannot delete volume %s: %v", volumeID, err)
 	}
 
 	return err
+}
+
+func GetCinderVolumeByName(vs *gophercloud.ServiceClient, name string) (*volumes.Volume, error) {
+	opts := volumes.ListOpts{Name: name}
+	pager := volumes.List(vs, opts)
+	var vol *volumes.Volume
+
+	err := pager.EachPage(func(page pagination.Page) (bool, error) {
+		vList, err := volumes.ExtractVolumes(page)
+		if err != nil {
+			glog.Errorf("Error extracting volumes: %s\n", err)
+			return false, err
+		}
+
+		if len(vList) == 0 {
+			return true, nil
+		}
+
+		vol, err = volumes.Get(vs, vList[0].ID).Extract()
+		if err != nil {
+			glog.Errorf("Failed to get volume %s: %s\n", vList[0].ID, err)
+			return false, err
+		}
+		// Not found
+		return false, nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+	return vol, nil
 }

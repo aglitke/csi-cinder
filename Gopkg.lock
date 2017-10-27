@@ -9,9 +9,27 @@
 
 [[projects]]
   branch = "master"
+  name = "github.com/golang/glog"
+  packages = ["."]
+  revision = "23def4e6c14b4da8ac2ed8007337bc5eb5007998"
+
+[[projects]]
+  branch = "master"
   name = "github.com/golang/protobuf"
   packages = ["proto","ptypes","ptypes/any","ptypes/duration","ptypes/timestamp"]
   revision = "1643683e1b54a9e88ad26d98f81400c8c9d9f4f9"
+
+[[projects]]
+  branch = "magnum"
+  name = "github.com/gophercloud/gophercloud"
+  packages = [".","openstack","openstack/blockstorage/v2/extensions/volumeactions","openstack/blockstorage/v2/volumes","openstack/identity/v2/tenants","openstack/identity/v2/tokens","openstack/identity/v3/tokens","openstack/utils","pagination"]
+  revision = "712cf24c6fba3d233cd7b2801a66967649dcec42"
+
+[[projects]]
+  name = "github.com/pborman/uuid"
+  packages = ["."]
+  revision = "e790cca94e6cc75c7064b1332e63811d4aae1a53"
+  version = "v1.1"
 
 [[projects]]
   branch = "master"
@@ -35,7 +53,7 @@
   branch = "master"
   name = "golang.org/x/sys"
   packages = ["unix","windows"]
-  revision = "92ac112afc6efd90284acda2b046fc0e351228f6"
+  revision = "3e3646d2c706c21b222a5dbcaa6db12b3e0cc765"
 
 [[projects]]
   branch = "master"
@@ -52,12 +70,30 @@
 [[projects]]
   name = "google.golang.org/grpc"
   packages = [".","balancer","codes","connectivity","credentials","grpclb/grpc_lb_v1/messages","grpclog","internal","keepalive","metadata","naming","peer","resolver","stats","status","tap","transport"]
-  revision = "f7bf885db0b7479a537ec317c6e48ce53145f3db"
-  version = "v1.7.0"
+  revision = "61d37c5d657a47e4404fd6823bd598341a2595de"
+  version = "v1.7.1"
+
+[[projects]]
+  name = "gopkg.in/gcfg.v1"
+  packages = [".","scanner","token","types"]
+  revision = "298b7a6a3838f79debfaee8bd3bfb2b8d779e756"
+  version = "v1.2.1"
+
+[[projects]]
+  name = "gopkg.in/warnings.v0"
+  packages = ["."]
+  revision = "8a331561fe74dadba6edfc59f3be66c22c3b065d"
+  version = "v0.1.1"
+
+[[projects]]
+  branch = "master"
+  name = "k8s.io/apimachinery"
+  packages = ["pkg/types","pkg/util/uuid"]
+  revision = "d9697193dfed7468f65da0d9d231c20b634425df"
 
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "cbcd7ac7c226b9572785af503a426092466f564070205ef635a3068fe090fead"
+  inputs-digest = "d28f28eee32d8367101763d2cf05853444481bc4934300d7a2b9e4ac391ee99e"
   solver-name = "gps-cdcl"
   solver-version = 1
